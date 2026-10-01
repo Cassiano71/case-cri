@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, Modality } from '@google/genai'
 
 export type SuggestFirstMessageInput = {
   nome: string
@@ -33,11 +33,17 @@ export async function suggestFirstMessage(
           {
             text: `Escreva uma primeira mensagem curta e profissional para o lead chamado "${input.nome}", interessado em "${input.imovelInteresse}".
 A mensagem deve ser personalizada, educada e adequada a um primeiro contato comercial imobiliário.
-Responda apenas com o texto da mensagem, sem aspas e sem explicações.`,
+Responda apenas com o texto da mensagem, sem aspas, sem explicações e sem gerar imagem.`,
           },
         ],
       },
     ],
+    config: {
+      responseModalities: [Modality.TEXT],
+      thinkingConfig: {
+        thinkingLevel: 'low',
+      },
+    },
   })
 
   const suggestion = response.text?.trim()
