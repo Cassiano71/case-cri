@@ -3,7 +3,8 @@ import { suggestFirstMessage } from './suggestFirstMessage'
 type IncomingReq = {
   method?: string
   url?: string
-  on: (event: string, listener: (chunk?: string | Uint8Array) => void) => void
+  body?: unknown
+  on?: (event: string, listener: (chunk?: string | Uint8Array) => void) => void
 }
 
 type OutgoingRes = {
@@ -20,6 +21,11 @@ function sendJson(res: OutgoingRes, status: number, payload: unknown) {
 
 function readBody(req: IncomingReq): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (typeof req.on !== 'function') {
+      resolve('')
+      return
+    }
+
     const chunks: string[] = []
 
     req.on('data', (chunk) => {
@@ -39,6 +45,56 @@ function isSuggestRoute(url: string | undefined): boolean {
   return path === '/api/suggest-message'
 }
 
+async function parseSuggestBody(
+  req: IncomingReq,
+): Promise<{ nome?: unknown; imovelInteresse?: unknown }> {
+  if (typeof req.body === 'object' && req.body !== null) {
+    return req.body as { nome?: unknown; imovelInteresse?: unknown }
+  }
+
+  if (typeof req.body === 'string' && req.body.trim()) {
+    return JSON.parse(req.body) as { nome?: unknown; imovelInteresse?: unknown }
+  }
+
+  const raw = await readBody(req)
+  return raw ? (JSON.parse(raw) as { nome?: unknown; imovelInteresse?: unknown }) : {}
+}
+
+/**
+ * Gera a sugestão. Usado pelo Vite e pela função serverless do Vercel.
+ */
+export async function handleSuggestMessagePost(
+  req: IncomingReq,
+  res: OutgoingRes,
+): Promise<void> {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'Use POST para gerar a mensagem.' })
+    return
+  }
+
+  try {
+    const body = await parseSuggestBody(req)
+    const nome = typeof body.nome === 'string' ? body.nome.trim() : ''
+    const imovelInteresse =
+      typeof body.imovelInteresse === 'string' ? body.imovelInteresse.trim() : ''
+
+    if (!nome || !imovelInteresse) {
+      sendJson(res, 400, { error: 'Informe o nome do lead e o imóvel de interesse.' })
+      return
+    }
+
+    const suggestion = await suggestFirstMessage({ nome, imovelInteresse })
+    sendJson(res, 200, { suggestion })
+  } catch (error) {
+    console.error(error)
+    const message =
+      error instanceof Error && error.message === 'GEMINI_API_KEY não configurada no arquivo .env.'
+        ? 'A chave do Gemini não está configurada no servidor.'
+        : 'Não foi possível gerar a mensagem agora. Tente novamente em instantes.'
+    sendJson(res, 500, { error: message })
+  }
+}
+
 /**
  * Endpoint Node usado pelo Vite. Não deve ser importado pelo frontend.
  */
@@ -52,30 +108,5 @@ export async function handleSuggestMessageRequest(
     return
   }
 
-  if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Use POST para gerar a mensagem.' })
-    return
-  }
-
-  try {
-    const raw = await readBody(req)
-    const body = raw ? (JSON.parse(raw) as { nome?: unknown; imovelInteresse?: unknown }) : {}
-    const nome = typeof body.nome === 'string' ? body.nome.trim() : ''
-    const imovelInteresse =
-      typeof body.imovelInteresse === 'string' ? body.imovelInteresse.trim() : ''
-
-    if (!nome || !imovelInteresse) {
-      sendJson(res, 400, { error: 'Informe o nome do lead e o imóvel de interesse.' })
-      return
-    }
-
-    const suggestion = await suggestFirstMessage({ nome, imovelInteresse })
-    sendJson(res, 200, { suggestion })
-  } catch (error) {
-    const message =
-      error instanceof Error && error.message === 'GEMINI_API_KEY não configurada no arquivo .env.'
-        ? 'A chave do Gemini não está configurada no servidor.'
-        : 'Não foi possível gerar a mensagem agora. Tente novamente em instantes.'
-    sendJson(res, 500, { error: message })
-  }
+  await handleSuggestMessagePost(req, res)
 }
