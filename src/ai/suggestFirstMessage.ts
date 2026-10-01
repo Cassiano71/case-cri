@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@google/genai'
+import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai'
 
 export type SuggestFirstMessageInput = {
   nome: string
@@ -41,7 +41,7 @@ Responda apenas com o texto da mensagem, sem aspas, sem explicações e sem gera
     config: {
       responseModalities: [Modality.TEXT],
       thinkingConfig: {
-        thinkingLevel: 'low',
+        thinkingLevel: ThinkingLevel.LOW,
       },
     },
   })
